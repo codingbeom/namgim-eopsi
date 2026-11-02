@@ -139,7 +139,7 @@ void main() {
   testWidgets('ingredients with no sample match explain the gap', (
     tester,
   ) async {
-    await _pump(tester, [_item(1, '김치', StorageLocation.fridge, 5)]);
+    await _pump(tester, [_item(1, '와사비', StorageLocation.fridge, 5)]);
 
     await tester.tap(find.text('추천'));
     await tester.pumpAndSettle();

@@ -154,6 +154,13 @@ class _EmptyRecipes extends StatelessWidget {
           icon: const Icon(Icons.add),
           label: const Text('재료 추가'),
         ),
+        const SizedBox(height: 10),
+        OutlinedButton(
+          key: const Key('recipes-open-catalog'),
+          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          onPressed: () => context.go('/cookbook'),
+          child: const Text('레시피 둘러보기'),
+        ),
       ],
     );
   }

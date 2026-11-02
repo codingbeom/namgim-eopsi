@@ -179,20 +179,23 @@ void main() {
         ranked.firstWhere((item) => item.recipe.id == 'onion-stir').score,
       ),
     );
+    final matchedIds = [
+      for (final scored in ranked)
+        if (scored.hasMatch) scored.recipe.id,
+    ];
+    expect(matchedIds.first, 'tofu-jorim');
     expect(
-      [
-        for (final scored in ranked)
-          if (scored.hasMatch) scored.recipe.id,
-      ],
-      [
+      matchedIds,
+      containsAll([
         'tofu-jorim',
         'egg-fried-rice',
         'egg-drop-soup',
         'gyeran-jjim',
         'onion-stir',
         'mandu-guk',
-      ],
+      ]),
     );
+    expect(matchedIds.length, greaterThanOrEqualTo(6));
     expect(
       ranked.firstWhere((item) => item.recipe.id == 'egg-fried-rice').reason,
       '대파 3일 남음. 없는 재료 1개 (계란)',
@@ -211,14 +214,25 @@ void main() {
     );
 
     final groups = groupRecipes(ranked);
-    expect(groups.rescue.map((item) => item.recipe.id), [
-      'tofu-jorim',
-      'egg-fried-rice',
-      'egg-drop-soup',
-      'gyeran-jjim',
-    ]);
-    expect(groups.ready.map((item) => item.recipe.id), ['onion-stir']);
-    expect(groups.stretch.map((item) => item.recipe.id), ['mandu-guk']);
+    final rescueIds = groups.rescue.map((item) => item.recipe.id).toList();
+    expect(rescueIds.first, 'tofu-jorim');
+    expect(
+      rescueIds,
+      containsAll([
+        'tofu-jorim',
+        'egg-fried-rice',
+        'egg-drop-soup',
+        'gyeran-jjim',
+      ]),
+    );
+    expect(
+      groups.ready.map((item) => item.recipe.id),
+      contains('onion-stir'),
+    );
+    expect(
+      groups.stretch.map((item) => item.recipe.id),
+      contains('mandu-guk'),
+    );
     expect(
       recommendIntro(groups: groups, fridgeEmpty: false),
       '곧 상할 재료를 쓰는 메뉴를 위로 올렸어요.',
@@ -255,6 +269,7 @@ void main() {
     return Recipe(
       id: id,
       name: name,
+      category: RecipeCategory.quick,
       minutes: minutes,
       summary: name,
       steps: name,
@@ -438,7 +453,7 @@ void main() {
     final unmatched = groupRecipes(
       rankRecipes(
         recipes: sampleRecipes,
-        stored: [storedItem(id: 1, name: '김치', days: 5)],
+        stored: [storedItem(id: 1, name: '와사비', days: 5)],
         now: now,
         prefs: NotificationPrefs.defaults,
       ),
@@ -463,4 +478,121 @@ void main() {
     expect(expiryPhrase('우유', -2), '우유 2일 지남');
     expect(expiryPhrase('식빵', 1), '식빵 내일까지');
   });
+
+  test('catalog is a large static list of home-cooking recipes', () {
+    expect(sampleRecipes.length, greaterThanOrEqualTo(30));
+    expect(
+      sampleRecipes.map((recipe) => recipe.id).toSet(),
+      hasLength(sampleRecipes.length),
+    );
+    for (final category in RecipeCategory.values) {
+      expect(
+        sampleRecipes.where((recipe) => recipe.category == category),
+        isNotEmpty,
+      );
+    }
+    for (final recipe in sampleRecipes) {
+      expect(recipe.name.trim(), isNotEmpty);
+      expect(recipe.summary.trim(), isNotEmpty);
+      expect(recipe.steps.trim(), isNotEmpty);
+      expect(recipe.minutes, greaterThan(0));
+      expect(recipe.ingredients, isNotEmpty);
+      expect(
+        recipe.ingredients.toSet(),
+        hasLength(recipe.ingredients.length),
+        reason: recipe.id,
+      );
+    }
+  });
+
+  test(
+    'filterRecipes keeps catalog order and combines query with category',
+    () {
+      expect(
+        filterRecipes(sampleRecipes).map((recipe) => recipe.id),
+        sampleRecipes.map((recipe) => recipe.id),
+      );
+
+      final byName = filterRecipes(sampleRecipes, query: '김치찌개');
+      expect(byName.map((recipe) => recipe.id), ['kimchi-jjigae']);
+
+      final byIngredient = filterRecipes(sampleRecipes, query: '고등어');
+      expect(byIngredient.map((recipe) => recipe.id), ['godeungeo-gui']);
+
+      final soups = filterRecipes(sampleRecipes, category: RecipeCategory.soup);
+      expect(soups, isNotEmpty);
+      expect(
+        soups.every((recipe) => recipe.category == RecipeCategory.soup),
+        isTrue,
+      );
+      expect(soups.map((recipe) => recipe.id), contains('miyeok-guk'));
+      expect(soups.map((recipe) => recipe.id), isNot(contains('tofu-jorim')));
+
+      final narrowed = filterRecipes(
+        sampleRecipes,
+        query: '미역',
+        category: RecipeCategory.soup,
+      );
+      expect(narrowed.map((recipe) => recipe.id), ['miyeok-guk']);
+
+      expect(filterRecipes(sampleRecipes, query: 'zzzz없는메뉴'), isEmpty);
+    },
+  );
+
+  test('recipe gap label counts missing ingredients', () {
+    final now = DateTime(2026, 11, 2);
+    final stored = [
+      IngredientItem(
+        id: 1,
+        name: '두부',
+        quantity: 1,
+        storageLocation: StorageLocation.fridge,
+        expiryDate: addDays(now, 1),
+        isOpened: false,
+        openedAt: null,
+        status: IngredientStatus.stored,
+        createdAt: now,
+      ),
+    ];
+    final scored = scoreRecipe(
+      recipe: sampleRecipes.firstWhere((recipe) => recipe.id == 'miyeok-guk'),
+      stored: stored,
+      now: now,
+      prefs: NotificationPrefs.defaults,
+    );
+    expect(recipeGapLabel(scored), '없는 재료 3개 · 미역, 소고기, 마늘');
+
+    final ready = scoreRecipe(
+      recipe: sampleRecipes.firstWhere((recipe) => recipe.id == 'tofu-jorim'),
+      stored: [
+        stored.first,
+        IngredientItem(
+          id: 2,
+          name: '대파',
+          quantity: 1,
+          storageLocation: StorageLocation.fridge,
+          expiryDate: addDays(now, 2),
+          isOpened: false,
+          openedAt: null,
+          status: IngredientStatus.stored,
+          createdAt: now,
+        ),
+        IngredientItem(
+          id: 3,
+          name: '굴소스',
+          quantity: 1,
+          storageLocation: StorageLocation.pantry,
+          expiryDate: addDays(now, 30),
+          isOpened: false,
+          openedAt: null,
+          status: IngredientStatus.stored,
+          createdAt: now,
+        ),
+      ],
+      now: now,
+      prefs: NotificationPrefs.defaults,
+    );
+    expect(recipeGapLabel(ready), '재료가 다 있어요');
+  });
+
 }

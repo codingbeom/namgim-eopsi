@@ -36,6 +36,11 @@ class AppShell extends StatelessWidget {
             label: '추천',
           ),
           NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: '레시피',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '설정',

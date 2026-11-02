@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/add/add_ingredient_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/ingredients/ingredients_screen.dart';
+import '../features/recipes/recipe_catalog_screen.dart';
 import '../features/recipes/recipes_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shell/app_shell.dart';
@@ -42,6 +43,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/recipes',
                 builder: (context, state) => const RecipesScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/cookbook',
+                builder: (context, state) => const RecipeCatalogScreen(),
               ),
             ],
           ),
