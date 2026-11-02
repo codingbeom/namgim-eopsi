@@ -23,6 +23,13 @@ class Recipe {
   final List<String> ingredients;
 }
 
+/// How actionable a recipe is for the fridge right now.
+///
+/// Rescue meals use something expiring soon and need at most one extra
+/// ingredient. Ready meals can be cooked with what you already have.
+/// Stretch meals are weaker partial matches and stay below both.
+enum RecommendBand { rescue, ready, stretch, none }
+
 class ScoredRecipe {
   const ScoredRecipe({
     required this.recipe,
@@ -31,6 +38,9 @@ class ScoredRecipe {
     required this.urgentIds,
     required this.urgentCount,
     required this.score,
+    required this.scoredAt,
+    required this.soonestDays,
+    required this.reason,
   });
 
   final Recipe recipe;
@@ -39,8 +49,32 @@ class ScoredRecipe {
   final List<int> urgentIds;
   final int urgentCount;
   final int score;
+  final DateTime scoredAt;
+  final int? soonestDays;
+  final String reason;
 
   bool get hasMatch => used.isNotEmpty;
+
+  RecommendBand get band {
+    if (!hasMatch) return RecommendBand.none;
+    if (urgentCount > 0 && missing.length <= 1) return RecommendBand.rescue;
+    if (missing.isEmpty) return RecommendBand.ready;
+    return RecommendBand.stretch;
+  }
+}
+
+class RecipeGroups {
+  const RecipeGroups({
+    required this.rescue,
+    required this.ready,
+    required this.stretch,
+  });
+
+  final List<ScoredRecipe> rescue;
+  final List<ScoredRecipe> ready;
+  final List<ScoredRecipe> stretch;
+
+  bool get isEmpty => rescue.isEmpty && ready.isEmpty && stretch.isEmpty;
 }
 
 const sampleRecipes = <Recipe>[
@@ -102,6 +136,75 @@ const sampleRecipes = <Recipe>[
   ),
 ];
 
+/// Higher means this ingredient should be cooked sooner.
+int expiryPriority(int days) {
+  if (days < 0) {
+    final overdue = days.abs().clamp(1, 14);
+    return 100 + overdue;
+  }
+  const near = <int>[72, 58, 46, 36, 26, 20, 14, 10];
+  if (days < near.length) return near[days];
+  if (days <= 14) return 4;
+  return 0;
+}
+
+String expiryPhrase(String name, int days) {
+  if (days < 0) return '$name ${-days}일 지남';
+  if (days == 0) return '$name 오늘까지';
+  if (days == 1) return '$name 내일까지';
+  return '$name $days일 남음';
+}
+
+String recommendationReason({
+  required List<IngredientItem> used,
+  required List<String> missing,
+  required List<IngredientItem> urgent,
+  required DateTime now,
+}) {
+  if (used.isEmpty) return '가진 재료가 없어요';
+
+  final urgentBySoonest = [...urgent]
+    ..sort((a, b) {
+      final byDays = daysUntil(
+        a.expiryDate,
+        now,
+      ).compareTo(daysUntil(b.expiryDate, now));
+      if (byDays != 0) return byDays;
+      return a.name.compareTo(b.name);
+    });
+  final phrases = [
+    for (final item in urgentBySoonest)
+      expiryPhrase(item.name, daysUntil(item.expiryDate, now)),
+  ];
+
+  if (missing.isEmpty) {
+    if (phrases.isEmpty) {
+      return '가진 재료 ${used.length}개로 바로 만들 수 있어요';
+    }
+    return '${phrases.join(', ')}. 가진 재료로 바로 만들 수 있어요';
+  }
+
+  final gap = '없는 재료 ${missing.length}개 (${missing.join(', ')})';
+  if (phrases.isEmpty) return '가진 재료 ${used.length}개 · $gap';
+  return '${phrases.join(', ')}. $gap';
+}
+
+String matchedIngredientLabel({
+  required String name,
+  required ScoredRecipe scored,
+}) {
+  IngredientItem? match;
+  for (final item in scored.used) {
+    if (namesMatch(item.name, name)) {
+      match = item;
+      break;
+    }
+  }
+  if (match == null) return '$name 없음';
+  if (!scored.urgentIds.contains(match.id)) return name;
+  return expiryPhrase(name, daysUntil(match.expiryDate, scored.scoredAt));
+}
+
 ScoredRecipe scoreRecipe({
   required Recipe recipe,
   required List<IngredientItem> stored,
@@ -127,7 +230,7 @@ ScoredRecipe scoreRecipe({
     pool.remove(best);
   }
 
-  final urgentIds = <int>[];
+  final urgentItems = <IngredientItem>[];
   for (final item in used) {
     final urgent = needsAttention(
       expiry: item.expiryDate,
@@ -135,29 +238,40 @@ ScoredRecipe scoreRecipe({
       now: now,
       prefs: prefs,
     );
-    if (urgent) urgentIds.add(item.id);
+    if (urgent) urgentItems.add(item);
   }
-  final urgentCount = urgentIds.length;
 
+  int? soonestDays;
   var score = 0;
   if (used.isEmpty) {
-    score -= 100;
-  }
-  score += used.length * 10;
-  score += urgentCount * 25;
-  score -= missing.length * 3;
-  for (final item in used) {
-    final days = daysUntil(item.expiryDate, now);
-    if (days < 0) score += 8;
+    score = -100;
+  } else {
+    for (final item in used) {
+      final days = daysUntil(item.expiryDate, now);
+      final current = soonestDays;
+      if (current == null || days < current) soonestDays = days;
+      // Owned food is worth using. Days left matter more than a headcount.
+      score += expiryPriority(days) + 8;
+    }
+    if (missing.isEmpty) score += 36;
+    score -= missing.length * 16;
   }
 
   return ScoredRecipe(
     recipe: recipe,
     used: used,
     missing: missing,
-    urgentIds: urgentIds,
-    urgentCount: urgentCount,
+    urgentIds: [for (final item in urgentItems) item.id],
+    urgentCount: urgentItems.length,
     score: score,
+    scoredAt: now,
+    soonestDays: soonestDays,
+    reason: recommendationReason(
+      used: used,
+      missing: missing,
+      urgent: urgentItems,
+      now: now,
+    ),
   );
 }
 
@@ -175,11 +289,55 @@ List<ScoredRecipe> rankRecipes({
       scoreRecipe(recipe: recipe, stored: active, now: now, prefs: prefs),
   ];
   ranked.sort((a, b) {
+    final byBand = a.band.index.compareTo(b.band.index);
+    if (byBand != 0) return byBand;
     final byScore = b.score.compareTo(a.score);
     if (byScore != 0) return byScore;
-    final byUrgent = b.urgentCount.compareTo(a.urgentCount);
-    if (byUrgent != 0) return byUrgent;
+    final aSoon = a.soonestDays ?? (1 << 20);
+    final bSoon = b.soonestDays ?? (1 << 20);
+    final bySoon = aSoon.compareTo(bSoon);
+    if (bySoon != 0) return bySoon;
+    final byMissing = a.missing.length.compareTo(b.missing.length);
+    if (byMissing != 0) return byMissing;
+    final byMinutes = a.recipe.minutes.compareTo(b.recipe.minutes);
+    if (byMinutes != 0) return byMinutes;
     return a.recipe.name.compareTo(b.recipe.name);
   });
   return ranked;
+}
+
+RecipeGroups groupRecipes(List<ScoredRecipe> ranked) {
+  return RecipeGroups(
+    rescue: [
+      for (final scored in ranked)
+        if (scored.band == RecommendBand.rescue) scored,
+    ],
+    ready: [
+      for (final scored in ranked)
+        if (scored.band == RecommendBand.ready) scored,
+    ],
+    stretch: [
+      for (final scored in ranked)
+        if (scored.band == RecommendBand.stretch) scored,
+    ],
+  );
+}
+
+String recommendIntro({
+  required RecipeGroups groups,
+  required bool fridgeEmpty,
+}) {
+  if (fridgeEmpty) {
+    return '재료를 담으면, 곧 상할 것부터 쓰는 메뉴를 골라 드려요.';
+  }
+  if (groups.isEmpty) {
+    return '가진 재료와 겹치는 예시 메뉴가 없어요. 두부, 계란, 대파, 양파처럼 자주 담는 이름이면 맞아요.';
+  }
+  if (groups.rescue.isNotEmpty) {
+    return '곧 상할 재료를 쓰는 메뉴를 위로 올렸어요.';
+  }
+  if (groups.ready.isNotEmpty) {
+    return '임박한 재료는 없어요. 가진 것만으로 만들 수 있는 메뉴예요.';
+  }
+  return '바로 만들 메뉴는 없어요. 없는 재료가 적은 순으로 보여 드려요.';
 }

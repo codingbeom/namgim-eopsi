@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_toast.dart';
 import '../../core/format.dart';
 import '../../domain/enums.dart';
 import '../../domain/models.dart';
@@ -17,16 +18,16 @@ Future<void> setIngredientStatus({
   await repository.setStatus(item.id, status);
   if (!context.mounted) return;
   final verb = status == IngredientStatus.eaten ? '먹었어요' : '버렸어요';
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text('${item.name} $verb'),
-      action: SnackBarAction(
-        label: '되돌리기',
-        onPressed: () {
-          onUndo?.call();
-          repository.setStatus(item.id, IngredientStatus.stored);
-        },
-      ),
+  AppToast.show(
+    context,
+    '${item.name} $verb',
+    kind: AppToastKind.success,
+    action: SnackBarAction(
+      label: '되돌리기',
+      onPressed: () {
+        onUndo?.call();
+        repository.setStatus(item.id, IngredientStatus.stored);
+      },
     ),
   );
 }
@@ -37,8 +38,11 @@ Future<void> openIngredient({
   required IngredientItem item,
 }) async {
   if (item.isOpened) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('${item.name}, 이미 개봉한 재료예요')));
+    AppToast.show(
+      context,
+      '${item.name}, 이미 개봉한 재료예요',
+      kind: AppToastKind.info,
+    );
     return;
   }
 
@@ -83,7 +87,7 @@ Future<void> openIngredient({
       : plan.shortened
       ? '${item.name} 개봉. 기한을 ${formatMonthDay(plan.expiryDate)}로 줄였어요'
       : '${item.name}을 개봉으로 표시했어요. 기한은 그대로예요';
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  AppToast.show(context, message, kind: AppToastKind.info);
 }
 
 Future<void> showIngredientEditor({

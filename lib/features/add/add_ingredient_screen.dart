@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
+import '../../core/app_toast.dart';
 import '../../core/format.dart';
 import '../../core/widgets/async_body.dart';
 import '../../domain/dates.dart';
@@ -118,15 +119,15 @@ class _AddIngredientScreenState extends ConsumerState<AddIngredientScreen> {
         .read(ingredientRepositoryProvider)
         .addFromFavorite(favorite);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${favorite.name} 담았어요'),
-        action: SnackBarAction(
-          label: '되돌리기',
-          onPressed: () {
-            ref.read(ingredientRepositoryProvider).delete(id);
-          },
-        ),
+    AppToast.show(
+      context,
+      '${favorite.name} 담았어요',
+      kind: AppToastKind.success,
+      action: SnackBarAction(
+        label: '되돌리기',
+        onPressed: () {
+          ref.read(ingredientRepositoryProvider).delete(id);
+        },
       ),
     );
   }
@@ -220,14 +221,15 @@ class _AddIngredientScreenState extends ConsumerState<AddIngredientScreen> {
               shelfDays: days < 0 ? null : days,
             );
         if (!added && mounted) {
-          ScaffoldMessenger.of(
+          AppToast.show(
             context,
-          ).showSnackBar(const SnackBar(content: Text('같은 이름의 즐겨찾기가 이미 있어요')));
+            '같은 이름의 즐겨찾기가 이미 있어요',
+            kind: AppToastKind.info,
+          );
         }
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$name 담았어요')));
+      AppToast.show(context, '$name 담았어요', kind: AppToastKind.success);
       context.pop();
     } finally {
       if (mounted) setState(() => _saving = false);

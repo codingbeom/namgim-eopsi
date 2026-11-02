@@ -127,7 +127,7 @@ class _HomeBodyState extends ConsumerState<_HomeBody>
         .where((item) => item.status == IngredientStatus.discarded)
         .length;
     final recipes = ref.watch(rankedRecipesProvider);
-    final featured = recipes.isEmpty ? null : recipes.first;
+    final featured = recipes.where((scored) => scored.hasMatch).firstOrNull;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
@@ -711,18 +711,20 @@ class _FeaturedCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
+                      scored.reason,
+                      key: const Key('home-recipe-reason'),
+                      style: TextStyle(
+                        color: urgent ? AppColors.accent : AppColors.olive,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
                       recipe.summary,
                       style: const TextStyle(
                         color: AppColors.muted,
                         height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '임박 재료 ${scored.urgentCount}개 · ${recipe.minutes}분',
-                      style: const TextStyle(
-                        color: AppColors.olive,
-                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
