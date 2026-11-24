@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
+import '../../core/app_toast.dart';
 import '../../core/format.dart';
 import '../../core/widgets/async_body.dart';
 import '../../domain/notification_prefs.dart';
 import '../../providers/providers.dart';
+import '../../services/notification_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -13,7 +15,6 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    final note = ref.watch(notificationServiceProvider).initNote;
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
       body: AsyncBody<NotificationPrefs>(
@@ -22,13 +23,11 @@ class SettingsScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
           children: [
             const Text(
-              '알림 시각과 시점만 저장해요. 실제 예약은 5주차에 workmanager와 함께 연결합니다.',
+              '냉장·냉동·상온 기한을 이 휴대폰 알림으로 알려요. 알림의 먹음·버림은 앱을 열지 않아도 정리되고, 메뉴 보기는 추천으로 이어져요.',
               style: TextStyle(color: AppColors.muted, height: 1.4),
             ),
-            if (note != null) ...[
-              const SizedBox(height: 8),
-              Text(note, style: const TextStyle(color: AppColors.olive)),
-            ],
+            const SizedBox(height: 12),
+            const _NotificationPanel(),
             const SizedBox(height: 8),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -103,6 +102,119 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _NotificationPanel extends ConsumerStatefulWidget {
+  const _NotificationPanel();
+
+  @override
+  ConsumerState<_NotificationPanel> createState() => _NotificationPanelState();
+}
+
+class _NotificationPanelState extends ConsumerState<_NotificationPanel> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(notificationServiceProvider).refreshStatus();
+    });
+  }
+
+  Future<void> _sync() async {
+    if (!mounted) return;
+    final items = ref.read(ingredientsProvider).value;
+    final prefs = ref.read(settingsProvider).value;
+    if (items == null || prefs == null) return;
+    await ref
+        .read(notificationServiceProvider)
+        .sync(items: items, prefs: prefs);
+  }
+
+  Future<void> _toast(Future<String> message) async {
+    final text = await message;
+    if (!mounted) return;
+    AppToast.show(context, text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = ref.watch(notificationServiceProvider);
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) {
+        final access = service.access;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_accessLabel(access), style: const TextStyle(height: 1.4)),
+            if (service.initNote != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                service.initNote!,
+                style: const TextStyle(color: AppColors.olive, height: 1.4),
+              ),
+            ],
+            if (access == NotificationAccess.denied ||
+                access == NotificationAccess.unknown) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                key: const Key('notification-permission'),
+                onPressed: () async {
+                  final text = await ref
+                      .read(notificationServiceProvider)
+                      .requestPermission();
+                  await _sync();
+                  if (!context.mounted) return;
+                  AppToast.show(context, text);
+                },
+                child: const Text('알림 허용하기'),
+              ),
+            ],
+            if (service.exactAlarmsApplicable &&
+                !service.exactAlarmsGranted) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '정확한 알람 권한이 없으면 알림이 몇 분 늦게 올 수 있어요.',
+                style: TextStyle(color: AppColors.muted, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                key: const Key('notification-exact-alarm'),
+                onPressed: () async {
+                  final text = await ref
+                      .read(notificationServiceProvider)
+                      .requestExactAlarms();
+                  await _sync();
+                  if (!context.mounted) return;
+                  AppToast.show(context, text);
+                },
+                child: const Text('정확한 시각 허용'),
+              ),
+            ],
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('send-test-notification'),
+              onPressed: () => _toast(
+                ref.read(notificationServiceProvider).showTestNotification(),
+              ),
+              child: const Text('테스트 알림 보내기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+String _accessLabel(NotificationAccess access) {
+  return switch (access) {
+    NotificationAccess.granted => '알림이 켜져 있어요.',
+    NotificationAccess.denied => '알림이 꺼져 있어요. 허용하면 기한 전에 알려 드릴게요.',
+    NotificationAccess.unsupported =>
+      '웹이나 컴퓨터에서는 알림을 예약하지 않아요. 휴대폰 앱에서 같은 설정으로 알려요.',
+    NotificationAccess.unknown => '알림 상태를 확인하고 있어요.',
+  };
 }
 
 class _LeadSection extends StatelessWidget {

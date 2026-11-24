@@ -18,7 +18,9 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 });
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
-  return NotificationService();
+  final service = NotificationService();
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 final shelfLifeRepositoryProvider = Provider<ShelfLifeRepository>((ref) {

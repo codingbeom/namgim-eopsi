@@ -7,7 +7,6 @@ import 'package:namgim_eopsi/domain/enums.dart';
 import 'package:namgim_eopsi/domain/models.dart';
 import 'package:namgim_eopsi/domain/notification_prefs.dart';
 import 'package:namgim_eopsi/features/recipes/recipe_catalog_screen.dart';
-import 'package:namgim_eopsi/features/recipes/recipes_screen.dart';
 import 'package:namgim_eopsi/providers/providers.dart';
 
 IngredientItem _item(

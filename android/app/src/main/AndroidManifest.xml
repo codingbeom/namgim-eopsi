@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Week 5: exact alarms reschedule expiry notifications after reboot. -->
+    <!-- Scheduled expiry alerts are restored after reboot. Exact alarms are
+         optional: without this grant the app uses inexact alarms. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -35,8 +36,8 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Week 5: receivers for scheduled expiry alerts and 먹음/버림 actions.
-             Scheduling itself is not wired yet. -->
+        <!-- flutter_local_notifications: scheduled alerts, boot restore, and
+             background 먹음/버림 (showsUserInterface = false). -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">

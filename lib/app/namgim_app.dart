@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/shell/notification_host.dart';
 import 'router.dart';
 import 'theme.dart';
 
@@ -25,14 +26,16 @@ class NamgimApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: (context, child) {
-        return ColoredBox(
-          color: AppColors.frame,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: ColoredBox(
-                color: AppColors.background,
-                child: child ?? const SizedBox.shrink(),
+        return NotificationHost(
+          child: ColoredBox(
+            color: AppColors.frame,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: ColoredBox(
+                  color: AppColors.background,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),
