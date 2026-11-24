@@ -9,12 +9,18 @@ import '../domain/enums.dart';
 import '../domain/models.dart';
 import '../domain/notification_prefs.dart';
 import '../domain/recipes.dart';
+import '../services/label_capture.dart';
+import '../services/label_capture_factory.dart';
 import '../services/notification_service.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase.defaults();
   ref.onDispose(database.close);
   return database;
+});
+
+final labelCaptureProvider = Provider<LabelCapture>((ref) {
+  return createLabelCapture();
 });
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {

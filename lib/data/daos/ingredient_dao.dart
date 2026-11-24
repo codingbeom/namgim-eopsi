@@ -35,15 +35,21 @@ class IngredientDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> updateDetails({
     required int id,
+    required String name,
     required double quantity,
     required StorageLocation location,
     required DateTime expiryDate,
+    required bool opened,
+    DateTime? openedAt,
   }) {
     return (update(ingredients)..where((row) => row.id.equals(id))).write(
       IngredientsCompanion(
+        name: Value(name),
         quantity: Value(quantity),
         storageLocation: Value(location),
         expiryDate: Value(expiryDate),
+        isOpened: Value(opened),
+        openedAt: Value(opened ? openedAt : null),
       ),
     );
   }

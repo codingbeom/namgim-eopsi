@@ -58,7 +58,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<!-- TODO(week6): add NSCameraUsageDescription before enabling barcode/OCR. -->
+	<key>NSCameraUsageDescription</key>
+	<string>포장지의 바코드와 유통기한을 읽으려고 카메라를 사용해요.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>포장지 사진을 골라 유통기한을 읽으려고 사진 보관함을 사용해요.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -11,6 +11,7 @@ import '../../domain/notification_prefs.dart';
 import '../../domain/recipes.dart';
 import '../../domain/urgency.dart';
 import '../../providers/providers.dart';
+import '../ingredients/ingredient_actions.dart';
 import '../shell/app_shell.dart';
 
 const _pale = Color(0xFFD5E3A8);
@@ -219,7 +220,16 @@ class _HomeBodyState extends ConsumerState<_HomeBody>
                         key: const ValueKey('imminent-list'),
                         children: [
                           for (final item in attention) ...[
-                            _ImminentRow(item: item, now: now, prefs: prefs),
+                            _ImminentRow(
+                              item: item,
+                              now: now,
+                              prefs: prefs,
+                              onTap: () => showIngredientEditor(
+                                context: context,
+                                ref: ref,
+                                item: item,
+                              ),
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ],
@@ -595,11 +605,13 @@ class _ImminentRow extends StatelessWidget {
     required this.item,
     required this.now,
     required this.prefs,
+    required this.onTap,
   });
 
   final IngredientItem item;
   final DateTime now;
   final NotificationPrefs prefs;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -614,7 +626,7 @@ class _ImminentRow extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => context.go('/ingredients'),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(0, 12, 12, 12),
           child: Row(

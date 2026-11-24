@@ -107,6 +107,11 @@ class IngredientTile extends StatelessWidget {
                                 style: TextStyle(color: AppColors.muted),
                               ),
                             ),
+                          if (onEdit != null)
+                            TextButton(
+                              onPressed: onEdit,
+                              child: const Text('수정'),
+                            ),
                           const Spacer(),
                           IconButton(
                             tooltip: '먹음',

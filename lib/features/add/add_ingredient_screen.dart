@@ -8,8 +8,10 @@ import '../../core/format.dart';
 import '../../core/widgets/async_body.dart';
 import '../../domain/dates.dart';
 import '../../domain/enums.dart';
+import '../../domain/gs1_barcode.dart';
 import '../../domain/models.dart';
 import '../../domain/names.dart';
+import '../../domain/packaging_date.dart';
 import '../../domain/shelf_life.dart';
 import '../../providers/providers.dart';
 
@@ -191,6 +193,127 @@ class _AddIngredientScreenState extends ConsumerState<AddIngredientScreen> {
         curve: Curves.easeOutCubic,
       );
     });
+  }
+
+  Future<bool?> _askPhotoSource(String title) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('카메라로 찍기'),
+                onTap: () => Navigator.pop(context, true),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('앨범에서 고르기'),
+                onTap: () => Navigator.pop(context, false),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _note(String message, {AppToastKind kind = AppToastKind.info}) {
+    AppToast.show(context, message, kind: kind);
+  }
+
+  void _fillExpiry(DateTime date, String helper) {
+    setState(() {
+      _expiry = dateOnly(date);
+      _expiryTouched = true;
+      _helper = helper;
+    });
+  }
+
+  Future<void> _scanBarcode() async {
+    final capture = ref.read(labelCaptureProvider);
+    if (!capture.supported) {
+      _note('이 환경에서는 바코드를 읽을 수 없어요. 지금 고른 기한을 그대로 둬요.');
+      return;
+    }
+    final fromCamera = await _askPhotoSource('바코드 읽기');
+    if (fromCamera == null || !mounted) return;
+    List<String>? values;
+    try {
+      values = await capture.scanBarcode(fromCamera: fromCamera);
+    } catch (error, stack) {
+      debugPrint('barcode scan failed: $error\n$stack');
+      if (!mounted) return;
+      _note('바코드를 읽지 못했어요. 다시 찍거나 날짜 촬영을 써 보세요.');
+      return;
+    }
+    if (!mounted || values == null) return;
+    if (values.isEmpty) {
+      _note('바코드를 찾지 못했어요. 다시 찍거나 날짜 촬영을 써 보세요.');
+      return;
+    }
+    final read = interpretBarcodeValues(values);
+    if (read.date != null) {
+      _fillExpiry(
+        read.date!,
+        read.bestBefore ? '바코드의 품질유지기한으로 채웠어요' : '바코드의 유통기한으로 채웠어요',
+      );
+      _note(
+        read.bestBefore ? '품질유지기한으로 날짜를 채웠어요' : '유통기한으로 날짜를 채웠어요',
+        kind: AppToastKind.success,
+      );
+      return;
+    }
+    if (read.plainRetailCode) {
+      _note('일반 바코드에는 날짜가 없어요. 날짜 촬영을 쓰거나, 지금 고른 기한을 그대로 두세요.');
+      return;
+    }
+    if (read.invalidDate) {
+      _note('바코드의 날짜를 해석하지 못했어요. 지금 고른 기한을 그대로 둬요.');
+      return;
+    }
+    _note('바코드에서 날짜를 찾지 못했어요. 날짜 촬영을 쓰거나, 지금 고른 기한을 그대로 두세요.');
+  }
+
+  Future<void> _scanDate() async {
+    final capture = ref.read(labelCaptureProvider);
+    if (!capture.supported) {
+      _note('이 환경에서는 날짜 촬영을 할 수 없어요. 지금 고른 기한을 그대로 둬요.');
+      return;
+    }
+    final fromCamera = await _askPhotoSource('날짜 촬영');
+    if (fromCamera == null || !mounted) return;
+    String? text;
+    try {
+      text = await capture.recognizePackagingText(fromCamera: fromCamera);
+    } catch (error, stack) {
+      debugPrint('date scan failed: $error\n$stack');
+      if (!mounted) return;
+      _note('글자를 읽지 못했어요. 날짜가 잘 보이게 다시 찍어 주세요.');
+      return;
+    }
+    if (!mounted || text == null) return;
+    final date = parsePackagingExpiry(text);
+    if (date == null) {
+      _note('포장지에서 날짜를 찾지 못했어요. 지금 고른 기한을 그대로 둬요.');
+      return;
+    }
+    _fillExpiry(date, '포장지에서 읽은 날짜로 채웠어요');
+    _note('포장지에서 읽은 날짜로 채웠어요', kind: AppToastKind.success);
   }
 
   Future<void> _save() async {
@@ -425,25 +548,25 @@ class _AddIngredientScreenState extends ConsumerState<AddIngredientScreen> {
                 const Divider(),
                 const SizedBox(height: 12),
                 const Text(
-                  '바코드와 날짜 촬영은 6주차에 붙여요. 지금은 기본 보관 기한으로 채워요.',
+                  '포장지의 바코드나 날짜를 이 기기에서 읽어요. 날짜가 없으면 지금 고른 기한을 그대로 둬요.',
                   style: TextStyle(color: AppColors.muted, height: 1.4),
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
-                      // TODO(week6): ML Kit barcode. GS1 date first, then shelf-life fallback.
                       child: OutlinedButton.icon(
-                        onPressed: null,
+                        key: const Key('scan-barcode'),
+                        onPressed: _scanBarcode,
                         icon: const Icon(Icons.qr_code_scanner),
                         label: const Text('바코드'),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      // TODO(week6): ML Kit text recognition for the printed date.
                       child: OutlinedButton.icon(
-                        onPressed: null,
+                        key: const Key('scan-date'),
+                        onPressed: _scanDate,
                         icon: const Icon(Icons.document_scanner_outlined),
                         label: const Text('날짜 촬영'),
                       ),

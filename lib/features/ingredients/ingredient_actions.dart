@@ -113,9 +113,20 @@ class _IngredientEditor extends ConsumerStatefulWidget {
 }
 
 class _IngredientEditorState extends ConsumerState<_IngredientEditor> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.item.name,
+  );
   late double _quantity = widget.item.quantity;
   late StorageLocation _location = widget.item.storageLocation;
   late DateTime _expiry = widget.item.expiryDate;
+  late bool _opened = widget.item.isOpened;
+  bool _nameMissing = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -128,29 +139,54 @@ class _IngredientEditorState extends ConsumerState<_IngredientEditor> {
   }
 
   Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _nameMissing = true);
+      return;
+    }
     await ref
         .read(ingredientRepositoryProvider)
         .updateDetails(
           id: widget.item.id,
+          name: name,
           quantity: _quantity,
           location: _location,
           expiryDate: _expiry,
+          opened: _opened,
+          openedAt: _opened ? (widget.item.openedAt ?? DateTime.now()) : null,
         );
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+    AppToast.show(context, '$name 수정했어요', kind: AppToastKind.success);
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.item.name,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          const Text(
+            '재료 수정',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('edit-name'),
+            controller: _name,
+            decoration: InputDecoration(
+              labelText: '이름',
+              errorText: _nameMissing ? '이름을 입력해 주세요' : null,
+            ),
+            textInputAction: TextInputAction.done,
+            onChanged: (_) {
+              if (_nameMissing && _name.text.trim().isNotEmpty) {
+                setState(() => _nameMissing = false);
+              }
+            },
           ),
           const SizedBox(height: 12),
           Row(
@@ -189,6 +225,14 @@ class _IngredientEditorState extends ConsumerState<_IngredientEditor> {
             trailing: const Icon(Icons.calendar_month_outlined),
             onTap: _pickDate,
           ),
+          SwitchListTile(
+            key: const Key('edit-opened'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('개봉함'),
+            subtitle: const Text('끄면 개봉 전 상태로 돌려요'),
+            value: _opened,
+            onChanged: (value) => setState(() => _opened = value),
+          ),
           const SizedBox(height: 8),
           if (widget.item.status == IngredientStatus.stored &&
               !widget.item.isOpened)
@@ -204,7 +248,11 @@ class _IngredientEditorState extends ConsumerState<_IngredientEditor> {
               child: const Text('개봉하고 기한 다시 계산'),
             ),
           const SizedBox(height: 8),
-          FilledButton(onPressed: _save, child: const Text('저장')),
+          FilledButton(
+            key: const Key('edit-save'),
+            onPressed: _save,
+            child: const Text('저장'),
+          ),
         ],
       ),
     );

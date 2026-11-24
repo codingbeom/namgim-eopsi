@@ -53,9 +53,12 @@ class _RecordingIngredients implements IngredientRepository {
   @override
   Future<void> updateDetails({
     required int id,
+    required String name,
     required double quantity,
     required StorageLocation location,
     required DateTime expiryDate,
+    required bool opened,
+    DateTime? openedAt,
   }) async {}
 
   @override

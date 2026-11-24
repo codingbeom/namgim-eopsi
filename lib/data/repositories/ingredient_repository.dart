@@ -27,9 +27,12 @@ abstract class IngredientRepository {
 
   Future<void> updateDetails({
     required int id,
+    required String name,
     required double quantity,
     required StorageLocation location,
     required DateTime expiryDate,
+    required bool opened,
+    DateTime? openedAt,
   });
 
   Future<OpenPlan> previewOpen(IngredientItem item, {DateTime? now});
@@ -101,15 +104,21 @@ class DriftIngredientRepository implements IngredientRepository {
   @override
   Future<void> updateDetails({
     required int id,
+    required String name,
     required double quantity,
     required StorageLocation location,
     required DateTime expiryDate,
+    required bool opened,
+    DateTime? openedAt,
   }) {
     return _db.ingredientDao.updateDetails(
       id: id,
+      name: name.trim(),
       quantity: quantity,
       location: location,
       expiryDate: dateOnly(expiryDate),
+      opened: opened,
+      openedAt: opened ? (openedAt ?? DateTime.now()) : null,
     );
   }
 
