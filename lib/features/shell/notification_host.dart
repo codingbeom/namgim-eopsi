@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/router.dart';
 import '../../providers/providers.dart';
+import '../../services/home_widget_actions.dart';
+import '../../services/home_widget_bridge.dart';
+import '../../services/home_widget_publish.dart';
 import '../../services/notification_actions.dart';
 import '../../services/notification_service.dart';
 
@@ -24,6 +27,7 @@ class _NotificationHostState extends ConsumerState<NotificationHost>
   StreamSubscription<String>? _routes;
   Timer? _debounce;
   var _askedPermission = false;
+  void Function()? _stopWidgetClicks;
 
   @override
   void initState() {
@@ -35,16 +39,24 @@ class _NotificationHostState extends ConsumerState<NotificationHost>
       _open(route);
     });
     final pending = _service.takePendingRoute();
+    _stopWidgetClicks = listenForHomeWidgetClicks(_followWidgetUri, (
+      error,
+      stack,
+    ) {
+      debugPrint('home widget click skipped: $error\n$stack');
+    });
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (pending != null) _open(pending);
       unawaited(_prepare());
+      unawaited(_openInitialWidget());
     });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _stopWidgetClicks?.call();
     if (_service.onAction == _handleAction) _service.onAction = null;
     _routes?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -62,6 +74,7 @@ class _NotificationHostState extends ConsumerState<NotificationHost>
   @override
   Widget build(BuildContext context) {
     ref.listen(ingredientsProvider, (previous, next) => _scheduleSync());
+    ref.listen(favoritesProvider, (previous, next) => _scheduleSync());
     ref.listen(settingsProvider, (previous, next) => _scheduleSync());
     return widget.child;
   }
@@ -85,7 +98,25 @@ class _NotificationHostState extends ConsumerState<NotificationHost>
       final prefs = ref.read(settingsProvider).value;
       if (items == null || prefs == null) return;
       unawaited(_service.sync(items: items, prefs: prefs));
+      final favorites = ref.read(favoritesProvider).value;
+      if (favorites == null) return;
+      unawaited(
+        publishHomeWidget(items: items, favorites: favorites, prefs: prefs),
+      );
     });
+  }
+
+  Future<void> _openInitialWidget() async {
+    final uri = await initialHomeWidgetUri();
+    if (!mounted || uri == null) return;
+    _followWidgetUri(uri);
+  }
+
+  void _followWidgetUri(Uri? uri) {
+    if (uri == null || !mounted) return;
+    final location = widgetLaunchLocation(uri);
+    if (location == null) return;
+    ref.read(routerProvider).go(location);
   }
 
   Future<void> _handleAction(NotificationActionPlan plan) async {

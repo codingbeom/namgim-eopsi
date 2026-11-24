@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme.dart';
 import '../../core/widgets/async_body.dart';
 import '../../domain/enums.dart';
-import '../../domain/names.dart';
 import '../../domain/notification_prefs.dart';
 import '../../domain/recipes.dart';
 import '../../providers/providers.dart';
@@ -289,7 +288,7 @@ class _CatalogChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final owned = scored.used.any((item) => namesMatch(item.name, name));
+    final owned = ingredientIsCovered(scored, name);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -300,7 +299,7 @@ class _CatalogChip extends StatelessWidget {
         border: Border.all(color: owned ? AppColors.olive : AppColors.line),
       ),
       child: Text(
-        owned ? name : '$name 없음',
+        matchedIngredientLabel(name: name, scored: scored, withUrgency: false),
         style: TextStyle(
           color: owned ? AppColors.olive : AppColors.muted,
           fontWeight: FontWeight.w600,

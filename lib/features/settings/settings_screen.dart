@@ -78,7 +78,7 @@ class SettingsScreen extends ConsumerWidget {
             _PantrySection(prefs: prefs),
             const SizedBox(height: 12),
             const Text(
-              '홈의 임박 표시는 이 날짜를 바로 따라가요. 냉장·냉동은 앞선 일수, 상온은 두 번째 알림 일수를 기준으로 해요.',
+              '홈과 홈 화면 위젯의 임박 표시는 이 날짜를 바로 따라가요. 냉장·냉동은 앞선 일수, 상온은 두 번째 알림 일수를 기준으로 해요.',
               style: TextStyle(color: AppColors.muted, height: 1.4),
             ),
             const SizedBox(height: 24),

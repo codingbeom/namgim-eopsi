@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namgim_eopsi/app/namgim_app.dart';
+import 'package:namgim_eopsi/data/repositories/ingredient_repository.dart';
 import 'package:namgim_eopsi/domain/dates.dart';
 import 'package:namgim_eopsi/domain/enums.dart';
 import 'package:namgim_eopsi/domain/models.dart';
 import 'package:namgim_eopsi/domain/notification_prefs.dart';
+import 'package:namgim_eopsi/domain/open_plan.dart';
 import 'package:namgim_eopsi/providers/providers.dart';
 
 IngredientItem _item(
@@ -28,7 +30,11 @@ IngredientItem _item(
   );
 }
 
-Future<void> _pump(WidgetTester tester, List<IngredientItem> items) async {
+Future<void> _pump(
+  WidgetTester tester,
+  List<IngredientItem> items, {
+  IngredientRepository? repository,
+}) async {
   tester.view.physicalSize = const Size(390, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -47,6 +53,8 @@ Future<void> _pump(WidgetTester tester, List<IngredientItem> items) async {
         shelfLifeProvider.overrideWith(
           (ref) => Stream.value(const <ShelfLifeRule>[]),
         ),
+        if (repository != null)
+          ingredientRepositoryProvider.overrideWith((ref) => repository),
       ],
       child: const NamgimApp(),
     ),
@@ -130,6 +138,8 @@ void main() {
     expect(find.text('냉장고가 비어 있어요'), findsOneWidget);
     expect(find.textContaining('재료를 담으면'), findsOneWidget);
     expect(find.text('두부조림'), findsNothing);
+    expect(find.text('김치볶음밥'), findsNothing);
+    expect(find.text('주먹밥'), findsNothing);
 
     await tester.tap(find.byKey(const Key('recipes-add')));
     await tester.pumpAndSettle();
@@ -169,4 +179,143 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     expect(find.byKey(const Key('add-submit')), findsOneWidget);
   });
+
+  testWidgets('rice and kimchi do not unlock unrelated recommendations', (
+    tester,
+  ) async {
+    await _pump(tester, [_item(1, '계란', StorageLocation.fridge, 10)]);
+
+    await tester.tap(find.text('추천'));
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(
+      of: find.byKey(const Key('recipes-list')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recipe-kimchi-fried-rice')),
+      400,
+      scrollable: list,
+    );
+    final card = find.byKey(const Key('recipe-kimchi-fried-rice'));
+    expect(
+      find.descendant(of: card, matching: find.textContaining('없는 재료 1개 (대파)')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('밥 · 기본')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('김치 · 기본')),
+      findsOneWidget,
+    );
+    expect(find.text('밥 없음'), findsNothing);
+    expect(find.text('김치 없음'), findsNothing);
+    expect(find.text('주먹밥'), findsNothing);
+    expect(find.text('김치전'), findsNothing);
+  });
+
+  testWidgets('cleanup marks stored rice and leaves implicit kimchi', (
+    tester,
+  ) async {
+    final repository = _RecordingIngredients();
+    await _pump(tester, [
+      _item(1, '계란', StorageLocation.fridge, 10),
+      _item(2, '밥', StorageLocation.fridge, 30),
+    ], repository: repository);
+
+    await tester.tap(find.text('추천'));
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(
+      of: find.byKey(const Key('recipes-list')),
+      matching: find.byType(Scrollable),
+    );
+    final card = find.byKey(const Key('recipe-kimchi-fried-rice'));
+    await tester.scrollUntilVisible(
+      find.descendant(of: card, matching: find.text('가진 재료만 정리')),
+      400,
+      scrollable: list,
+    );
+    expect(find.text('김치 · 기본'), findsWidgets);
+    expect(find.text('김치 없음'), findsNothing);
+
+    await tester.tap(
+      find.descendant(of: card, matching: find.text('가진 재료만 정리')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('쓴 재료: 밥, 계란'), findsOneWidget);
+    expect(find.textContaining('없는 재료: 대파'), findsOneWidget);
+    expect(find.textContaining('기본 재료(김치)는 그대로 둬요.'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, '정리'));
+    await tester.pumpAndSettle();
+
+    expect(repository.statuses, [
+      (2, IngredientStatus.eaten),
+      (1, IngredientStatus.eaten),
+    ]);
+  });
+}
+
+class _RecordingIngredients implements IngredientRepository {
+  final List<(int, IngredientStatus)> statuses = [];
+
+  @override
+  Future<void> setStatus(int id, IngredientStatus status) async {
+    statuses.add((id, status));
+  }
+
+  @override
+  Stream<List<IngredientItem>> watchAll() => const Stream.empty();
+
+  @override
+  Future<int> add({
+    required String name,
+    required double quantity,
+    required StorageLocation location,
+    required DateTime expiryDate,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<int> addFromFavorite(FavoriteItem favorite) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> delete(int id) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> updateDetails({
+    required int id,
+    required String name,
+    required double quantity,
+    required StorageLocation location,
+    required DateTime expiryDate,
+    required bool opened,
+    DateTime? openedAt,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<OpenPlan> previewOpen(IngredientItem item, {DateTime? now}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> markOpened({
+    required int id,
+    required DateTime expiryDate,
+    required bool moveToFridge,
+    DateTime? openedAt,
+  }) {
+    throw UnimplementedError();
+  }
 }

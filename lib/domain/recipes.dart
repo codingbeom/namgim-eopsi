@@ -1,5 +1,6 @@
 import 'dates.dart';
 import 'enums.dart';
+import 'household_staples.dart';
 import 'models.dart';
 import 'names.dart';
 import 'notification_prefs.dart';
@@ -37,7 +38,6 @@ class Recipe {
   final List<String> ingredients;
 }
 
-
 /// How actionable a recipe is for the fridge right now.
 ///
 /// Rescue meals use something expiring soon and need at most one extra
@@ -50,6 +50,7 @@ class ScoredRecipe {
     required this.recipe,
     required this.used,
     required this.missing,
+    this.assumed = const [],
     required this.urgentIds,
     required this.urgentCount,
     required this.score,
@@ -61,6 +62,11 @@ class ScoredRecipe {
   final Recipe recipe;
   final List<IngredientItem> used;
   final List<String> missing;
+
+  /// Rice or kimchi the recipe needs but the fridge does not list.
+  ///
+  /// These count as owned for the gap, and they are not rows to mark eaten.
+  final List<String> assumed;
   final List<int> urgentIds;
   final int urgentCount;
   final int score;
@@ -527,7 +533,6 @@ const sampleRecipes = <Recipe>[
   ),
 ];
 
-
 /// Higher means this ingredient should be cooked sooner.
 int expiryPriority(int days) {
   if (days < 0) {
@@ -550,6 +555,7 @@ String expiryPhrase(String name, int days) {
 String recommendationReason({
   required List<IngredientItem> used,
   required List<String> missing,
+  List<String> assumed = const [],
   required List<IngredientItem> urgent,
   required DateTime now,
 }) {
@@ -570,10 +576,13 @@ String recommendationReason({
   ];
 
   if (missing.isEmpty) {
-    if (phrases.isEmpty) {
-      return '가진 재료 ${used.length}개로 바로 만들 수 있어요';
-    }
-    return '${phrases.join(', ')}. 가진 재료로 바로 만들 수 있어요';
+    final ready = _readyClause(
+      used.length,
+      assumed,
+      withCount: phrases.isEmpty,
+    );
+    if (phrases.isEmpty) return ready;
+    return '${phrases.join(', ')}. $ready';
   }
 
   final gap = '없는 재료 ${missing.length}개 (${missing.join(', ')})';
@@ -581,20 +590,57 @@ String recommendationReason({
   return '${phrases.join(', ')}. $gap';
 }
 
+String _readyClause(
+  int usedCount,
+  List<String> assumed, {
+  required bool withCount,
+}) {
+  if (assumed.isEmpty) {
+    return withCount ? '가진 재료 $usedCount개로 바로 만들 수 있어요' : '가진 재료로 바로 만들 수 있어요';
+  }
+  final basics = assumed.join(', ');
+  return withCount
+      ? '가진 재료 $usedCount개와 기본 재료($basics)로 바로 만들 수 있어요'
+      : '가진 재료와 기본 재료($basics)로 바로 만들 수 있어요';
+}
+
+IngredientItem? storedMatchFor(ScoredRecipe scored, String name) {
+  for (final item in scored.used) {
+    if (coversIngredient(item.name, name)) return item;
+  }
+  return null;
+}
+
+bool ingredientIsCovered(ScoredRecipe scored, String name) {
+  if (storedMatchFor(scored, name) != null) return true;
+  return scored.assumed.any((item) => coversIngredient(item, name));
+}
+
 String matchedIngredientLabel({
   required String name,
   required ScoredRecipe scored,
+  bool withUrgency = true,
 }) {
-  IngredientItem? match;
-  for (final item in scored.used) {
-    if (namesMatch(item.name, name)) {
-      match = item;
-      break;
+  final match = storedMatchFor(scored, name);
+  if (match == null) {
+    if (scored.assumed.any((item) => coversIngredient(item, name))) {
+      return '$name · 기본';
     }
+    return '$name 없음';
   }
-  if (match == null) return '$name 없음';
-  if (!scored.urgentIds.contains(match.id)) return name;
+  if (!withUrgency || !scored.urgentIds.contains(match.id)) return name;
   return expiryPhrase(name, daysUntil(match.expiryDate, scored.scoredAt));
+}
+
+String cookCleanupBody(ScoredRecipe scored) {
+  final usedNames = scored.used.map((item) => item.name).join(', ');
+  final missing = scored.missing.isEmpty
+      ? '없는 재료는 없어요.'
+      : '없는 재료: ${scored.missing.join(', ')}';
+  final staple = scored.assumed.isEmpty
+      ? ''
+      : '\n기본 재료(${scored.assumed.join(', ')})는 그대로 둬요.';
+  return '쓴 재료: $usedNames\n$missing$staple\n먹음으로 정리할까요?';
 }
 
 ScoredRecipe scoreRecipe({
@@ -606,16 +652,21 @@ ScoredRecipe scoreRecipe({
   final pool = [...stored];
   final used = <IngredientItem>[];
   final missing = <String>[];
+  final assumed = <String>[];
   for (final needed in recipe.ingredients) {
     IngredientItem? best;
     for (final item in pool) {
-      if (!namesMatch(item.name, needed)) continue;
+      if (!coversIngredient(item.name, needed)) continue;
       if (best == null || item.expiryDate.isBefore(best.expiryDate)) {
         best = item;
       }
     }
     if (best == null) {
-      missing.add(needed);
+      if (isHouseholdStaple(needed)) {
+        assumed.add(needed);
+      } else {
+        missing.add(needed);
+      }
       continue;
     }
     used.add(best);
@@ -653,6 +704,7 @@ ScoredRecipe scoreRecipe({
     recipe: recipe,
     used: used,
     missing: missing,
+    assumed: assumed,
     urgentIds: [for (final item in urgentItems) item.id],
     urgentCount: urgentItems.length,
     score: score,
@@ -661,6 +713,7 @@ ScoredRecipe scoreRecipe({
     reason: recommendationReason(
       used: used,
       missing: missing,
+      assumed: assumed,
       urgent: urgentItems,
       now: now,
     ),
@@ -767,6 +820,9 @@ bool _recipeMatches(Recipe recipe, String needle) {
 }
 
 String recipeGapLabel(ScoredRecipe scored) {
-  if (scored.missing.isEmpty) return '재료가 다 있어요';
+  if (scored.missing.isEmpty) {
+    if (scored.assumed.isEmpty) return '재료가 다 있어요';
+    return '재료가 다 있어요 · 기본 재료 ${scored.assumed.join(', ')}';
+  }
   return '없는 재료 ${scored.missing.length}개 · ${scored.missing.join(', ')}';
 }

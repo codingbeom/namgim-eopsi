@@ -6,10 +6,11 @@ import 'package:workmanager/workmanager.dart';
 
 import '../data/db/app_database.dart';
 import '../data/repositories/ingredient_repository.dart';
-import '../data/repositories/mappers.dart';
 import '../data/repositories/shelf_life_repository.dart';
 import '../domain/models.dart';
 import '../domain/notification_prefs.dart';
+import 'home_widget_actions.dart';
+import 'home_widget_publish.dart';
 import 'notification_actions.dart';
 import 'notification_service.dart';
 
@@ -53,14 +54,20 @@ Future<void> handleBackgroundNotificationResponse(
 Future<void> refreshScheduledExpiryNotifications() async {
   WidgetsFlutterBinding.ensureInitialized();
   final database = AppDatabase.defaults();
-  late final List<IngredientItem> items;
-  late final NotificationPrefs prefs;
+  late final Kitchen kitchen;
   try {
-    items = await _readItems(database);
-    prefs = mapPrefs(await database.settingsDao.getOne());
+    kitchen = await loadKitchen(database);
   } finally {
     await database.close();
   }
+  await _publishWidget(kitchen);
+  await syncExpiryNotifications(items: kitchen.items, prefs: kitchen.prefs);
+}
+
+Future<void> syncExpiryNotifications({
+  required List<IngredientItem> items,
+  required NotificationPrefs prefs,
+}) async {
   final service = NotificationService();
   try {
     await service.initialize(
@@ -73,9 +80,7 @@ Future<void> refreshScheduledExpiryNotifications() async {
   }
 }
 
-Future<({List<IngredientItem> items, NotificationPrefs prefs})> _updateThenLoad(
-  NotificationActionPlan plan,
-) async {
+Future<Kitchen> _updateThenLoad(NotificationActionPlan plan) async {
   final database = AppDatabase.defaults();
   try {
     final repository = DriftIngredientRepository(
@@ -83,30 +88,21 @@ Future<({List<IngredientItem> items, NotificationPrefs prefs})> _updateThenLoad(
       DriftShelfLifeRepository(database),
     );
     await applyNotificationAction(repository: repository, plan: plan);
-    final items = await _readItems(database);
-    final prefs = mapPrefs(await database.settingsDao.getOne());
-    return (items: items, prefs: prefs);
+    return await loadKitchen(database);
   } finally {
     await database.close();
   }
 }
 
-Future<void> _reschedule(
-  ({List<IngredientItem> items, NotificationPrefs prefs}) kitchen,
-) async {
-  final service = NotificationService();
-  try {
-    await service.initialize(
-      registerDailyWork: false,
-      onBackgroundResponse: notificationTapBackground,
-    );
-    await service.sync(items: kitchen.items, prefs: kitchen.prefs);
-  } finally {
-    service.dispose();
-  }
+Future<void> _reschedule(Kitchen kitchen) async {
+  await _publishWidget(kitchen);
+  await syncExpiryNotifications(items: kitchen.items, prefs: kitchen.prefs);
 }
 
-Future<List<IngredientItem>> _readItems(AppDatabase database) async {
-  final rows = await database.ingredientDao.watchAll().first;
-  return [for (final row in rows) mapIngredient(row)];
+Future<void> _publishWidget(Kitchen kitchen) {
+  return publishHomeWidget(
+    items: kitchen.items,
+    favorites: kitchen.favorites,
+    prefs: kitchen.prefs,
+  );
 }

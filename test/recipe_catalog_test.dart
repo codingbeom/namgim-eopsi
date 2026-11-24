@@ -157,7 +157,6 @@ void main() {
     expect(find.text('주먹밥'), findsNothing);
   });
 
-
   testWidgets('empty fridge still opens the recipe catalog', (tester) async {
     await _pump(tester, const []);
 
@@ -174,8 +173,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(_in(RecipeCatalogScreen, '없는 재료 3개 · 두부, 대파, 굴소스'), findsOneWidget);
 
+    await tester.enterText(find.byKey(const Key('recipe-search')), '김치볶음밥');
+    await tester.pumpAndSettle();
+    expect(_in(RecipeCatalogScreen, '없는 재료 2개 · 계란, 대파'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '밥 · 기본'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '김치 · 기본'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '밥 없음'), findsNothing);
+    expect(_in(RecipeCatalogScreen, '김치 없음'), findsNothing);
+
     await tester.enterText(find.byKey(const Key('recipe-search')), '미역');
     await tester.pumpAndSettle();
     expect(_in(RecipeCatalogScreen, '미역국'), findsOneWidget);
+  });
+
+  testWidgets('stored egg and scallion make kimchi fried rice complete', (
+    tester,
+  ) async {
+    await _pump(tester, [
+      _item(1, '계란', StorageLocation.fridge, 10),
+      _item(2, '대파', StorageLocation.fridge, 4),
+    ]);
+
+    await tester.tap(find.text('레시피'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('recipe-search')), '김치볶음밥');
+    await tester.pumpAndSettle();
+
+    expect(_in(RecipeCatalogScreen, '재료가 다 있어요 · 기본 재료 김치, 밥'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '밥 · 기본'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '김치 · 기본'), findsOneWidget);
+    expect(_in(RecipeCatalogScreen, '없는 재료'), findsNothing);
   });
 }

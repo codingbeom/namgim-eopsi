@@ -8,7 +8,6 @@ import '../../core/widgets/async_body.dart';
 import '../../domain/dates.dart';
 import '../../domain/enums.dart';
 import '../../domain/models.dart';
-import '../../domain/names.dart';
 import '../../domain/notification_prefs.dart';
 import '../../domain/recipes.dart';
 import '../../domain/urgency.dart';
@@ -157,7 +156,9 @@ class _EmptyRecipes extends StatelessWidget {
         const SizedBox(height: 10),
         OutlinedButton(
           key: const Key('recipes-open-catalog'),
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+          ),
           onPressed: () => context.go('/cookbook'),
           child: const Text('레시피 둘러보기'),
         ),
@@ -212,15 +213,11 @@ class _RecipeCard extends ConsumerWidget {
   Future<void> _cook(BuildContext context, WidgetRef ref) async {
     final used = scored.used;
     if (used.isEmpty) return;
-    final usedNames = used.map((item) => item.name).join(', ');
-    final missing = scored.missing.isEmpty
-        ? '없는 재료는 없어요.'
-        : '없는 재료: ${scored.missing.join(', ')}';
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('${scored.recipe.name} 만들고 정리'),
-        content: Text('쓴 재료: $usedNames\n$missing\n먹음으로 정리할까요?'),
+        content: Text(cookCleanupBody(scored)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -373,14 +370,8 @@ class _IngredientChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    IngredientItem? match;
-    for (final item in scored.used) {
-      if (namesMatch(item.name, name)) {
-        match = item;
-        break;
-      }
-    }
-    final owned = match != null;
+    final match = storedMatchFor(scored, name);
+    final owned = ingredientIsCovered(scored, name);
     final urgent = match != null && scored.urgentIds.contains(match.id);
     final days = match == null
         ? null
